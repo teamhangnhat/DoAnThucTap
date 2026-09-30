@@ -1,6 +1,9 @@
 import Header from "./Header";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
+
+import AIChatBox from "../chatboxAI/AIChatBox";
+
 import { Outlet } from "react-router-dom";
 
 function Layout() {
@@ -23,8 +26,8 @@ function Layout() {
 
             <Footer />
 
-           
-           
+            {/* Chatbot AI */}
+            <AIChatBox />
 
         </>
 

@@ -120,6 +120,7 @@ const uploadRoutes = require(
 
 );
 
+const chatbotRoutes = require("./routes/chatbotRoutes.js");
 
 
 
@@ -171,7 +172,11 @@ app.use(
 // CUSTOMER API ROUTES
 // =====================================================
 
-
+app.use(
+    "/api/chatbot",
+    chatbotRoutes
+);
+console.log("Register chatbot route...");
 
 
 app.use("/api/payment", paymentRoutes);
