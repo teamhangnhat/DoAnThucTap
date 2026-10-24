@@ -97,73 +97,73 @@ function Login() {
             );
 
 
+   
             // =================================================
-            // GET ROLE
+            // GET ROLE AND DEPARTMENT
             // =================================================
 
-            const role =
+            const role = String(data.user?.role || "")
+                .trim()
+                .toUpperCase();
 
-                data.user?.role?.toUpperCase();
+            const department = String(data.user?.department || "")
+                .trim()
+                .toUpperCase();
 
-
-            // =================================================
             // ADMIN
-            // =================================================
-
-            if (
-
-                role === "ADMIN"
-
-            ) {
-
-                navigate("/admin");
-
+            if (role === "ADMIN") {
+                navigate("/admin", { replace: true });
                 return;
-
             }
 
-
-            // =================================================
-            // MANAGER
-            // =================================================
-
+            // MANAGEMENT
             if (
-
-                role === "MANAGER"
-
+                role === "MANAGEMENT" ||
+                department === "MANAGEMENT"
             ) {
-
-                navigate("/manager");
-
+                navigate("/management", { replace: true });
                 return;
-
             }
 
-
-            // =================================================
-            // EMPLOYEE
-            // =================================================
-
+            // SALES
             if (
-
-                role === "EMPLOYEE"
-
+                role === "EMPLOYEE" &&
+                department === "SALES"
             ) {
-
-                navigate("/employee");
-
+                navigate("/employee", { replace: true });
                 return;
-
             }
 
+            // CUSTOMER SERVICE
+            if (
+                role === "EMPLOYEE" &&
+                [
+                    "CUSTOMER SERVICE",
+                    "CUSTOMER SUPPORT",
+                    "CSKH"
+                ].includes(department)
+            ) {
+                navigate("/employee", { replace: true });
+                return;
+            }
 
-            // =================================================
+            // OTHER EMPLOYEES
+            if (role === "EMPLOYEE") {
+                navigate("/employee", { replace: true });
+                return;
+            }
+
             // CUSTOMER
-            // =================================================
+            if (role === "CUSTOMER") {
+                navigate("/", { replace: true });
+                return;
+            }
 
-            navigate("/");
+            // INVALID ROLE
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
 
-
+            setError("Your account has not been assigned a valid role.");
         }
 
 

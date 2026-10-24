@@ -78,10 +78,27 @@ import Wishlist
 import PaymentSuccess
     from "../pages/Payment/PaymentSuccess";
 import PaymentCancel from "../pages/Payment/PaymentCancel";
+
+//employees
+import ManagementLayout
+    from "../components/management/ManagementLayout";
+
+import ManagementDashboard
+    from "../pages/Management/ManagementDashboard";
 // =====================================================
 // ADMIN
 // =====================================================
+import EmployeeLayout
+    from "../components/employee/EmployeeLayout";
 
+import EmployeePage
+    from "../pages/Admin/Employees/EmployeePage";
+
+import CustomerChat
+    from "../pages/Admin/Employees/CustomerChat";
+import EmployeeManagement
+    from "../pages/Admin/Employees/EmployeeManagement";
+    import EmployeeDetail from "../pages/Admin/Employees/EmployeeDetail";
 import AdminProducts
 
     from "../pages/Admin/Products/AdminProducts";
@@ -128,8 +145,36 @@ function AppRoutes() {
 
 
             <Routes>
+                
 
-
+<Route
+    path="/employee"
+    element={<EmployeeLayout />}
+>
+    <Route index element={<EmployeePage />} />
+    <Route path="products" element={<EmployeePage />} />
+    <Route path="inventory" element={<EmployeePage />} />
+    <Route path="orders" element={<EmployeePage />} />
+    <Route path="schedule" element={<EmployeePage />} />
+    <Route path="leave-requests" element={<EmployeePage />} />
+    <Route path="salary" element={<EmployeePage />} />
+    <Route path="performance" element={<EmployeePage />} />
+    <Route path="profile" element={<EmployeePage />} />
+    <Route path="chat" element={<CustomerChat />} />
+</Route>
+<Route
+    path="/management"
+    element={<ManagementLayout />}
+>
+    <Route
+        index
+        element={<ManagementDashboard />}
+    />
+    <Route
+        path="tasks"
+        element={<ManagementDashboard />}
+    />
+</Route>
                 {/* ================================================= */}
                 {/* CUSTOMER ROUTES */}
                 {/* ================================================= */}
@@ -352,6 +397,7 @@ function AppRoutes() {
     element={<AdminLayout />}
 >
 
+
     {/* /admin */}
     <Route
         index
@@ -395,7 +441,16 @@ function AppRoutes() {
             <AdminCustomers />
         }
     />
-
+<Route
+    path="employees"
+    element={
+        <EmployeeManagement />
+    }
+/>
+<Route
+    path="employees/:id"
+    element={<EmployeeDetail />}
+/>
 
     {/* /admin/orders */}
     <Route

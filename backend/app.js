@@ -20,7 +20,8 @@ const {
 // =====================================================
 // CUSTOMER ROUTES
 // =====================================================
-
+const voucherRoutes =
+    require("./routes/voucherRoutes");
 const userRoutes =
 
     require("./routes/userRoutes");
@@ -74,7 +75,11 @@ const paymentRoutes = require("./routes/paymentRoutes");
 // =====================================================
 // ADMIN ROUTES
 // =====================================================
-
+const employeeTaskRoutes =
+    require("./routes/Admin/employeeTaskRoutes");
+const workScheduleRoutes = require("./routes/Admin/workScheduleRoutes");
+const salaryRoutes = require("./routes/Admin/salaryRoutes");
+const employeeRoutes = require("./routes/Admin/employeeRoutes");
 const adminProductRoutes =
 
     require(
@@ -119,7 +124,6 @@ const uploadRoutes = require(
     "./routes/uploadRoutes"
 
 );
-
 const chatbotRoutes = require("./routes/chatbotRoutes.js");
 
 
@@ -171,7 +175,10 @@ app.use(
 // =====================================================
 // CUSTOMER API ROUTES
 // =====================================================
-
+app.use(
+    "/api/vouchers",
+    voucherRoutes
+);
 app.use(
     "/api/chatbot",
     chatbotRoutes
@@ -278,7 +285,10 @@ app.use(
 // =====================================================
 // ADMIN API ROUTES
 // =====================================================
-
+app.use("/api/admin/employee-tasks", employeeTaskRoutes);
+app.use("/api/work-schedules", workScheduleRoutes);
+app.use("/api/salaries", salaryRoutes);
+app.use("/api/employees", employeeRoutes);
 app.use(
 
     "/api/admin/products",

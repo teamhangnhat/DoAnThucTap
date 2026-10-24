@@ -539,11 +539,8 @@ const refreshMyMembership = async (
 // =====================================================
 
 const getMyVouchers = async (
-
     req,
-
     res
-
 ) => {
 
     try {
@@ -552,31 +549,15 @@ const getMyVouchers = async (
 
         const pool = await getPool();
 
-
         const result = await pool
-
             .request()
-
             .input(
-
                 "user_id",
-
                 userId
-
             )
-
             .query(`
 
                 SELECT
-
-                    uv.id AS user_voucher_id,
-
-                    uv.is_used,
-
-                    uv.used_at,
-
-                    uv.created_at AS received_at,
-
 
                     v.id AS voucher_id,
 
@@ -602,62 +583,87 @@ const getMyVouchers = async (
 
                     v.is_active,
 
+                    mt.id AS membership_tier_id,
 
                     mt.name AS membership_tier_name
 
+                FROM vouchers v
 
-                FROM user_vouchers uv
-
-
-                INNER JOIN vouchers v
-
-                    ON uv.voucher_id = v.id
-
-
-                LEFT JOIN membership_tiers mt
-
+                INNER JOIN membership_tiers mt
                     ON v.membership_tier_id = mt.id
 
+                INNER JOIN user_memberships um
+                    ON um.user_id = @user_id
 
-                WHERE uv.user_id = @user_id
+                WHERE
 
+                    -- User chỉ được thấy voucher
+                    -- thuộc membership hiện tại
+                    -- hoặc thấp hơn
 
-                ORDER BY uv.created_at DESC
+                    v.membership_tier_id <= um.membership_tier_id
+
+                    -- Voucher đang hoạt động
+
+                    AND v.is_active = 1
+
+                    -- Voucher còn hạn
+
+                    AND GETDATE()
+                        BETWEEN v.start_date
+                        AND v.end_date
+
+                    -- Voucher còn lượt sử dụng
+
+                    AND (
+                        v.usage_limit IS NULL
+                        OR v.used_count < v.usage_limit
+                    )
+
+                    -- User chưa từng sử dụng voucher này
+
+                    AND NOT EXISTS (
+
+                        SELECT 1
+
+                        FROM voucher_usages vu
+
+                        WHERE
+                            vu.voucher_id = v.id
+                            AND vu.user_id = @user_id
+
+                    )
+
+                ORDER BY
+
+                    v.membership_tier_id ASC,
+
+                    v.discount_value DESC
 
             `);
-
 
         res.json({
 
             vouchers:
-
                 result.recordset
 
         });
 
     }
 
-
     catch (error) {
 
-
         console.error(
-
             "Get vouchers error:",
-
             error
-
         );
-
 
         res.status(500).json({
 
             message:
-
                 "Failed to load vouchers",
 
             error:
-
                 error.message
 
         });

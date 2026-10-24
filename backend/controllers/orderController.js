@@ -49,6 +49,8 @@ const createOrder = async (req, res) => {
 
             discountAmount = 0,
 
+             voucherId,
+
             paymentMethod
 
         } = req.body;
@@ -834,6 +836,51 @@ const createOrder = async (req, res) => {
                 .recordset[0]
 
                 .id;
+                // =====================================
+// USE VOUCHER
+// =====================================
+
+if (voucherId) {
+
+    await transaction.request()
+
+        .input(
+            "voucherId",
+            sql.Int,
+            Number(voucherId)
+        )
+
+        .input(
+            "userId",
+            sql.Int,
+            customerId
+        )
+
+        .input(
+            "orderId",
+            sql.Int,
+            orderId
+        )
+
+        .query(`
+            INSERT INTO voucher_usages
+            (
+                voucher_id,
+                user_id,
+                order_id
+            )
+            VALUES
+            (
+                @voucherId,
+                @userId,
+                @orderId
+            );
+
+            UPDATE vouchers
+            SET used_count = used_count + 1
+            WHERE id = @voucherId;
+        `);
+}
 
 
         // =================================================

@@ -182,44 +182,18 @@ function Checkout() {
 
 
     // =================================================
-    // VOUCHER
-    // =================================================
+// VOUCHER
+// =================================================
 
-    const [
+const [vouchers, setVouchers] = useState([]);
 
-        voucher,
+const [selectedVoucher, setSelectedVoucher] =
+    useState(null);
 
-        setVoucher
+const [discount, setDiscount] = useState(0);
 
-    ] = useState("");
-
-
-    const [
-
-        discount,
-
-        setDiscount
-
-    ] = useState(0);
-
-
-    const [
-
-        voucherApplied,
-
-        setVoucherApplied
-
-    ] = useState(false);
-
-
-    const [
-
-        voucherMessage,
-
-        setVoucherMessage
-
-    ] = useState("");
-
+const [voucherMessage, setVoucherMessage] =
+    useState("");
 
     // =================================================
     // STATUS
@@ -420,6 +394,35 @@ function Checkout() {
                         items
 
                     );
+                    // =================================
+// LOAD AVAILABLE VOUCHERS
+// =================================
+
+const token =
+    localStorage.getItem("token");
+
+const voucherResponse =
+    await fetch(
+        `${API_URL}/api/vouchers/available`,
+        {
+            headers: {
+                Authorization:
+                    `Bearer ${token}`
+            }
+        }
+    );
+
+if (voucherResponse.ok) {
+
+    const voucherData =
+        await voucherResponse.json();
+
+    setVouchers(
+        Array.isArray(voucherData)
+            ? voucherData
+            : []
+    );
+}
 
                 }
 
@@ -549,183 +552,97 @@ function Checkout() {
 
 
     // =================================================
-    // APPLY VOUCHER
-    // =================================================
+// SELECT VOUCHER
+// =================================================
 
-    const handleApplyVoucher = () => {
+const handleSelectVoucher = (voucherItem) => {
 
+    setVoucherMessage("");
 
-        const code =
-
-            voucher
-
-                .trim()
-
-                .toUpperCase();
-
-
-        // =============================================
-        // EMPTY VOUCHER
-        // =============================================
-
-        if (
-
-            !code
-
-        ) {
-
-
-            setDiscount(
-
-                0
-
-            );
-
-
-            setVoucherApplied(
-
-                false
-
-            );
-
-
-            setVoucherMessage(
-
-                "Please enter a voucher code."
-
-            );
-
-
-            return;
-
-        }
-
-
-        // =============================================
-        // WELCOME10
-        // =============================================
-
-        if (
-
-            code ===
-
-            "WELCOME10"
-
-        ) {
-
-
-            if (
-
-                subtotal <
-
-                500000
-
-            ) {
-
-
-                setDiscount(
-
-                    0
-
-                );
-
-
-                setVoucherApplied(
-
-                    false
-
-                );
-
-
-                setVoucherMessage(
-
-                    "Minimum order is 500.000đ."
-
-                );
-
-
-                return;
-
-            }
-
-
-            const calculatedDiscount =
-
-                Math.min(
-
-                    subtotal *
-
-                    0.1,
-
-                    200000
-
-                );
-
-
-            setDiscount(
-
-                calculatedDiscount
-
-            );
-
-
-            setVoucherApplied(
-
-                true
-
-            );
-
-
-            setVoucherMessage(
-
-                ""
-
-            );
-
-
-            return;
-
-        }
-
-
-        // =============================================
-        // INVALID VOUCHER
-        // =============================================
-
-        setDiscount(
-
-            0
-
+    const minimumOrder =
+        Number(
+            voucherItem.min_order_amount || 0
         );
 
+    if (subtotal < minimumOrder) {
 
-        setVoucherApplied(
-
-            false
-
-        );
-
+        setSelectedVoucher(null);
+        setDiscount(0);
 
         setVoucherMessage(
-
-            "Invalid voucher code."
-
+            `Minimum order is ${formatMoney(
+                minimumOrder
+            )}.`
         );
 
-    };
+        return;
+    }
+
+    let calculatedDiscount = 0;
+
+    if (
+        voucherItem.discount_type ===
+        "PERCENTAGE"
+    ) {
+
+        calculatedDiscount =
+            subtotal *
+            Number(
+                voucherItem.discount_value || 0
+            ) /
+            100;
+
+        if (
+            voucherItem.max_discount_amount
+        ) {
+
+            calculatedDiscount =
+                Math.min(
+                    calculatedDiscount,
+                    Number(
+                        voucherItem.max_discount_amount
+                    )
+                );
+        }
+
+    } else {
+
+        calculatedDiscount =
+            Number(
+                voucherItem.discount_value || 0
+            );
+    }
+
+    calculatedDiscount =
+        Math.min(
+            calculatedDiscount,
+            subtotal + shippingFee
+        );
+
+    setSelectedVoucher(
+        voucherItem
+    );
+
+    setDiscount(
+        calculatedDiscount
+    );
+
+    setVoucherMessage("");
+};
 
 
-    // =================================================
-    // TOTAL
-    // =================================================
+     
+// =================================================
+// TOTAL
+// =================================================
 
-    const total =
+const total =
+    subtotal +
+    shippingFee -
+    discount;
 
-        subtotal +
 
-        shippingFee -
-
-        discount;
+   
 
 
     // =================================================
@@ -952,6 +869,8 @@ function Checkout() {
                         discountAmount:
 
                             discount,
+                            voucherId:
+    selectedVoucher?.id || null,
 
                         paymentMethod:
 
@@ -1034,6 +953,8 @@ await createOrder({
 
     discountAmount:
         discount,
+        voucherId:
+    selectedVoucher?.id || null,
 
     paymentMethod:
         paymentMethod
@@ -1929,127 +1850,232 @@ await createOrder({
                         </div>
 
 
-                        {/* VOUCHER */}
+                      {/* VOUCHER */}
 
-                        <div className="border-t border-gray-100 pt-5">
+<div className="border-t border-gray-100 pt-5">
 
+    <p className="font-medium mb-4">
+        Voucher
+    </p>
 
-                            <p className="font-medium mb-3">
+    {vouchers.length === 0 ? (
 
+        <div className="border border-gray-200 rounded-xl p-4">
 
-                                Voucher
+            <p className="text-sm text-gray-500">
+                No vouchers available for your membership.
+            </p>
 
+        </div>
 
-                            </p>
+    ) : (
 
+        <div className="space-y-3">
 
-                            <div className="flex gap-2">
+            {vouchers.map(
+                (voucherItem) => {
 
+                    const isSelected =
+                        selectedVoucher?.id ===
+                        voucherItem.id;
 
-                                <input
+                    const minimumOrder =
+                        Number(
+                            voucherItem.min_order_amount || 0
+                        );
 
-                                    value={
+                    const isEligible =
+                        subtotal >=
+                        minimumOrder;
 
-                                        voucher
+                    return (
 
-                                    }
+                        <button
+                            key={
+                                voucherItem.id
+                            }
+                            type="button"
+                            onClick={() =>
+                                handleSelectVoucher(
+                                    voucherItem
+                                )
+                            }
+                            disabled={
+                                !isEligible
+                            }
+                            className={`
+                                w-full
+                                text-left
+                                border
+                                rounded-xl
+                                p-4
+                                transition
+                                ${
+                                    isSelected
+                                        ? "border-black bg-gray-50"
+                                        : "border-gray-200"
+                                }
+                                ${
+                                    !isEligible
+                                        ? "opacity-50 cursor-not-allowed"
+                                        : "hover:border-black"
+                                }
+                            `}
+                        >
 
-                                    onChange={(event) => {
+                            <div className="flex items-start justify-between gap-4">
 
+                                {/* VOUCHER INFO */}
 
-                                        setVoucher(
+                                <div className="flex-1">
 
-                                            event.target.value
+                                    <div className="flex items-center gap-2">
 
-                                        );
+                                        <span className="font-bold">
+                                            {voucherItem.code}
+                                        </span>
 
+                                        {isSelected && (
 
-                                        setDiscount(
+                                            <FaCheck className="text-green-600 text-sm" />
 
-                                            0
+                                        )}
 
-                                        );
+                                    </div>
 
+                                    <p className="text-sm text-gray-600 mt-1">
 
-                                        setVoucherApplied(
+                                        {voucherItem.description}
 
-                                            false
+                                    </p>
 
-                                        );
+                                    <p className="text-sm text-gray-500 mt-2">
 
+                                        {voucherItem.discount_type ===
+                                        "PERCENTAGE"
 
-                                        setVoucherMessage(
+                                            ? `${voucherItem.discount_value}% OFF`
 
-                                            ""
+                                            : `-${formatMoney(
+                                                voucherItem.discount_value
+                                            )}`
+                                        }
 
-                                        );
+                                    </p>
 
-                                    }}
+                                    <p className="text-xs text-gray-400 mt-1">
 
-                                    placeholder="Enter voucher code"
+                                        Minimum order:{" "}
 
-                                    className="flex-1 min-w-0 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black"
+                                        {formatMoney(
+                                            minimumOrder
+                                        )}
 
-                                />
+                                    </p>
 
+                                    {!isEligible && (
 
-                                <button
+                                        <p className="text-xs text-red-500 mt-2">
 
-                                    type="button"
+                                            Order does not meet
+                                            the minimum amount.
 
-                                    onClick={
+                                        </p>
 
-                                        handleApplyVoucher
+                                    )}
 
-                                    }
+                                </div>
 
-                                    className="bg-black text-white px-5 rounded-xl font-medium"
+                                {/* CHECK */}
 
+                                <div
+                                    className={`
+                                        w-5
+                                        h-5
+                                        rounded-full
+                                        border
+                                        flex
+                                        items-center
+                                        justify-center
+                                        flex-shrink-0
+                                        ${
+                                            isSelected
+                                                ? "border-black bg-black text-white"
+                                                : "border-gray-300"
+                                        }
+                                    `}
                                 >
 
+                                    {isSelected && (
 
-                                    Apply
+                                        <FaCheck className="text-[10px]" />
 
+                                    )}
 
-                                </button>
-
+                                </div>
 
                             </div>
 
+                        </button>
 
-                            {voucherApplied && (
+                    );
 
+                }
+            )}
 
-                                <p className="text-green-600 text-sm mt-3 flex items-center gap-2">
+        </div>
 
+    )}
 
-                                    <FaCheck />
+    {selectedVoucher && (
 
+        <div className="mt-3 flex items-center justify-between">
 
-                                    Voucher applied
+            <p className="text-green-600 text-sm flex items-center gap-2">
 
+                <FaCheck />
 
-                                </p>
+                {selectedVoucher.code} applied
 
-                            )}
+            </p>
 
+            <button
+                type="button"
+                onClick={() => {
 
-                            {voucherMessage && (
+                    setSelectedVoucher(
+                        null
+                    );
 
+                    setDiscount(
+                        0
+                    );
 
-                                <p className="text-red-500 text-sm mt-3">
+                    setVoucherMessage(
+                        ""
+                    );
 
+                }}
+                className="text-sm underline text-gray-500 hover:text-black"
+            >
+                Remove
+            </button>
 
-                                    {voucherMessage}
+        </div>
 
+    )}
 
-                                </p>
+    {voucherMessage && (
 
-                            )}
+        <p className="text-red-500 text-sm mt-3">
 
+            {voucherMessage}
 
-                        </div>
+        </p>
 
+    )}
+
+</div>
 
                         {/* DISCOUNT */}
 
@@ -2179,6 +2205,7 @@ await createOrder({
     );
 
 }
+
 
 
 export default Checkout;

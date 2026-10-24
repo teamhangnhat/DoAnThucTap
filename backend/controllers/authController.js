@@ -252,21 +252,21 @@ const login = async (req, res) => {
 
             .query(`
 
-                SELECT
-
-                    id,
-                    full_name,
-                    email,
-                    password,
-                    phone,
-                    address,
-                    role,
-                    status
-
-                FROM users
-
-                WHERE email = @email
-
+               SELECT
+    u.id,
+    u.full_name,
+    u.email,
+    u.password,
+    u.phone,
+    u.address,
+    u.role,
+    u.status,
+    ep.employee_code,
+    ep.department
+FROM dbo.users u
+LEFT JOIN dbo.employee_profiles ep
+    ON ep.user_id = u.id
+WHERE u.email = @email
             `);
 
 
@@ -287,7 +287,9 @@ const login = async (req, res) => {
 
         // CHECK STATUS
 
-        if (user.status !== "ACTIVE") {
+       if (
+    String(user.status || "").trim().toUpperCase() !== "ACTIVE"
+) {
 
             return res.status(403).json({
 
@@ -324,24 +326,17 @@ const login = async (req, res) => {
 
         // CREATE JWT
 
-        const token = jwt.sign(
-
-            {
-
-                id: user.id,
-                role: user.role
-
-            },
-
-            process.env.JWT_SECRET,
-
-            {
-
-                expiresIn: "7d"
-
-            }
-
-        );
+       const token = jwt.sign(
+    {
+        id: user.id,
+        role: String(user.role || "").trim().toUpperCase(),
+        department: String(user.department || "").trim()
+    },
+    process.env.JWT_SECRET,
+    {
+        expiresIn: "7d"
+    }
+);
 
 
         // REMOVE PASSWORD
