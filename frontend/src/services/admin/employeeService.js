@@ -47,3 +47,19 @@ export const getScheduleEmployees = async () => {
 
     return response.data;
 };
+export const createEmployee = async (employeeData) => {
+    const token = localStorage.getItem("token");
+
+    const response = await axios.post(
+        `${API_URL}/api/employees`,
+        employeeData,
+        {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        }
+    );
+
+    return response.data;
+};
+

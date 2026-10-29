@@ -18,6 +18,173 @@ import {
 
 const API_URL = "http://localhost:5000/api/admin/employee-tasks";
 
+const SCHEDULE_API = "http://localhost:5000/api/work-schedules";
+
+function EmployeeSchedule() {
+    const [schedules, setSchedules] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    const loadSchedules = useCallback(async () => {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            setError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        setError("");
+
+        try {
+            const response = await axios.get(SCHEDULE_API, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            const data = response.data;
+
+            setSchedules(
+                Array.isArray(data)
+                    ? data
+                    : data.schedules || data.workSchedules || []
+            );
+        } catch (err) {
+            console.error(
+                "Lỗi tải lịch làm việc:",
+                err.response?.data || err
+            );
+
+            setError(
+                err.response?.data?.message ||
+                "Không thể tải lịch làm việc."
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSchedules();
+    }, [loadSchedules]);
+
+    const formatDate = (value) => {
+        if (!value) return "—";
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+
+        return date.toLocaleDateString("vi-VN");
+    };
+
+    const formatTime = (value) => {
+        if (!value) return "—";
+        return String(value).slice(0, 5);
+    };
+
+    return (
+        <section className="mt-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                        Lịch làm việc của tôi
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                        Danh sách ca làm việc được phân công.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={loadSchedules}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                    <RefreshCw size={16} />
+                    Làm mới
+                </button>
+            </div>
+
+            {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {error}
+                </div>
+            )}
+
+            {loading ? (
+                <div className="rounded-xl border bg-white p-8 text-center text-gray-500">
+                    Đang tải lịch làm việc...
+                </div>
+            ) : schedules.length === 0 ? (
+                <div className="rounded-xl border bg-white p-8 text-center">
+                    <CalendarDays
+                        size={32}
+                        className="mx-auto text-gray-400"
+                    />
+                    <h3 className="mt-3 font-semibold text-gray-900">
+                        Chưa có lịch làm việc
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                        Lịch làm việc sẽ hiển thị khi quản lý phân công.
+                    </p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto rounded-xl border bg-white">
+                    <table className="w-full min-w-[650px] text-left text-sm">
+                        <thead className="bg-gray-50 text-gray-600">
+                            <tr>
+                                <th className="px-5 py-3">Ngày làm</th>
+                                <th className="px-5 py-3">Ca làm</th>
+                                <th className="px-5 py-3">Bắt đầu</th>
+                                <th className="px-5 py-3">Kết thúc</th>
+                                <th className="px-5 py-3">Ghi chú</th>
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y">
+                            {schedules.map((item) => (
+                                <tr key={item.id}>
+                                    <td className="px-5 py-4 font-medium text-gray-900">
+                                        {formatDate(
+                                            item.schedule_date ||
+                                            item.work_date ||
+                                            item.date
+                                        )}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        {item.shift_name ||
+                                            item.shift ||
+                                            "—"}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        {formatTime(
+                                            item.start_time ||
+                                            item.startTime
+                                        )}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        {formatTime(
+                                            item.end_time ||
+                                            item.endTime
+                                        )}
+                                    </td>
+                                    <td className="px-5 py-4 text-gray-600">
+                                        {item.note ||
+                                            item.notes ||
+                                            "—"}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </section>
+    );
+}
+
 const pages = {
     "/employee": {
         title: "Dashboard",
@@ -372,9 +539,13 @@ function EmployeePage() {
                 </p>
             </div>
 
-            {location.pathname === "/employee" && (
-                <EmployeeTasks employee={employee} />
-            )}
+           {location.pathname === "/employee" && (
+    <EmployeeTasks employee={employee} />
+)}
+
+{location.pathname === "/employee/schedule" && (
+    <EmployeeSchedule />
+)}
         </div>
     );
 }

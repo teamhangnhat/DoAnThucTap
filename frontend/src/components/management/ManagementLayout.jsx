@@ -2,8 +2,9 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 const menuItems = [
-    { label: "Dashboard", path: "/management", end: true },
-    { label: "Tasks", path: "/management/tasks" },
+    { label: "Dashboard", path: "/management?tab=dashboard" },
+    { label: "Task Management", path: "/management?tab=tasks" },
+    { label: "Work Schedule", path: "/management?tab=schedule" },
 ];
 
 export default function ManagementLayout() {

@@ -152,6 +152,7 @@ const authorizeScheduleById = async (req, res, next) => {
     }
 };
 
+
 const authorizeScheduleList = async (req, res, next) => {
     try {
         const currentUser = await getUserInfo(req.user.id);
@@ -163,42 +164,47 @@ const authorizeScheduleList = async (req, res, next) => {
         }
 
         const pool = await getPool();
-        let result;
 
-        // Admin chỉ xem lịch của Management.
+        // Admin xem lịch của Management.
         if (isAdmin(currentUser)) {
-            result = await pool.request().query(`
+            const result = await pool.request().query(`
                 SELECT DISTINCT u.id
                 FROM dbo.users u
                 INNER JOIN dbo.employee_profiles ep
                     ON ep.user_id = u.id
-                WHERE UPPER(LTRIM(RTRIM(u.role))) = 'MANAGEMENT'
-                   OR UPPER(LTRIM(RTRIM(ISNULL(ep.department, '')))) = 'MANAGEMENT'
+                WHERE UPPER(LTRIM(RTRIM(ISNULL(u.role, '')))) = 'MANAGEMENT'
             `);
+
+            req.scheduleEmployeeIds = result.recordset.map(
+                (row) => Number(row.id)
+            );
         }
-        // Management chỉ xem lịch của Employee thông thường.
+        // Management xem lịch của chính mình và nhân viên.
         else if (isManagement(currentUser)) {
-            result = await pool.request().query(`
+            const result = await pool.request().query(`
+                SELECT u.id
+                FROM dbo.users u
+                WHERE u.id = ${Number(currentUser.id)}
+
+                UNION
+
                 SELECT DISTINCT u.id
                 FROM dbo.users u
                 INNER JOIN dbo.employee_profiles ep
                     ON ep.user_id = u.id
-                WHERE UPPER(LTRIM(RTRIM(ISNULL(u.role, '')))) <> 'ADMIN'
-                  AND UPPER(LTRIM(RTRIM(ISNULL(u.role, '')))) <> 'MANAGEMENT'
-                  AND UPPER(LTRIM(RTRIM(ISNULL(ep.department, '')))) <> 'MANAGEMENT'
+                WHERE UPPER(LTRIM(RTRIM(ISNULL(u.role, '')))) = 'EMPLOYEE'
                   AND ep.employee_code IS NOT NULL
                   AND LTRIM(RTRIM(ep.employee_code)) <> ''
             `);
+
+            req.scheduleEmployeeIds = result.recordset.map(
+                (row) => Number(row.id)
+            );
         }
         // Employee chỉ xem lịch của chính mình.
         else {
             req.scheduleEmployeeIds = [Number(currentUser.id)];
-            return next();
         }
-
-        req.scheduleEmployeeIds = result.recordset.map(
-            (row) => Number(row.id)
-        );
 
         return next();
     } catch (error) {
@@ -209,6 +215,7 @@ const authorizeScheduleList = async (req, res, next) => {
         });
     }
 };
+
 
 const authorizeScheduleCreation = async (req, res, next) => {
     try {

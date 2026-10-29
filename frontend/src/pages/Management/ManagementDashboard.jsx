@@ -1,10 +1,10 @@
-
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 const TASK_API = "http://localhost:5000/api/admin/employee-tasks";
 const EMPLOYEE_API = "http://localhost:5000/api/employees";
+const SCHEDULE_API = "http://localhost:5000/api/work-schedules";
 
 const statusLabels = {
     PENDING: "Pending",
@@ -16,22 +16,54 @@ const statusLabels = {
 function getArray(data, key) {
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.[key])) return data[key];
+    if (Array.isArray(data?.schedules)) return data.schedules;
     return [];
 }
 
 function getErrorMessage(error) {
-    return error.response?.data?.message || error.message ||
+    return error.response?.data?.message ||
+        error.message ||
         "Something went wrong.";
 }
 
+function formatDate(value) {
+    if (!value) return "-";
+
+    const date = String(value).slice(0, 10);
+    const parts = date.split("-");
+
+    return parts.length === 3
+        ? `${parts[2]}/${parts[1]}/${parts[0]}`
+        : date;
+}
+
+function formatTime(value) {
+    if (!value) return "--:--";
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(11, 19);
+    }
+
+    return String(value).slice(0, 8);
+}
+
 export default function ManagementDashboard() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentTab = searchParams.get("tab") || "dashboard";
+
     const [employees, setEmployees] = useState([]);
     const [tasks, setTasks] = useState([]);
+    const [schedules, setSchedules] = useState([]);
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [scheduleSaving, setScheduleSaving] = useState(false);
+
     const [error, setError] = useState("");
+    const [scheduleError, setScheduleError] = useState("");
     const [message, setMessage] = useState("");
 
+    // Form giao việc
     const [form, setForm] = useState({
         title: "",
         description: "",
@@ -39,58 +71,80 @@ export default function ManagementDashboard() {
         due_date: "",
     });
 
-    const token = localStorage.getItem("token");
+    // Form tạo lịch làm
+    const [scheduleForm, setScheduleForm] = useState({
+        employee_id: "",
+        schedule_date: "",
+        start_time: "",
+        end_time: "",
+        shift_name: "",
+        note: "",
+    });
 
-    const api = useCallback(() => {
-        return axios.create({
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-        });
-    }, []);
+    const api = useCallback(() => axios.create({
+        headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+    }), []);
 
+    // Tải dữ liệu
     const loadData = useCallback(async () => {
         setLoading(true);
         setError("");
+        setScheduleError("");
 
-        try {
-            const client = api();
+        const client = api();
 
-            const [taskResponse, employeeResponse] = await Promise.all([
+        const [taskResult, employeeResult, scheduleResult] =
+            await Promise.allSettled([
                 client.get(TASK_API),
                 client.get(EMPLOYEE_API),
+                client.get(SCHEDULE_API),
             ]);
 
-            setTasks(getArray(taskResponse.data, "tasks"));
-
-            const employeeList = getArray(
-                employeeResponse.data,
-                "employees"
-            );
-
-            setEmployees(employeeList);
-        } catch (err) {
-            setError(
-                `${getErrorMessage(err)} Check that you are logged in with a Management account and that both APIs are available.`
-            );
-        } finally {
-            setLoading(false);
+        if (taskResult.status === "fulfilled") {
+            setTasks(getArray(taskResult.value.data, "tasks"));
+        } else {
+            setError(getErrorMessage(taskResult.reason));
         }
+
+        if (employeeResult.status === "fulfilled") {
+            setEmployees(getArray(employeeResult.value.data, "employees"));
+        } else {
+            setError((previous) =>
+                previous
+                    ? `${previous} | ${getErrorMessage(employeeResult.reason)}`
+                    : getErrorMessage(employeeResult.reason)
+            );
+        }
+
+        if (scheduleResult.status === "fulfilled") {
+            setSchedules(getArray(scheduleResult.value.data, "schedules"));
+        } else {
+            setScheduleError(getErrorMessage(scheduleResult.reason));
+        }
+
+        setLoading(false);
     }, [api]);
 
     useEffect(() => {
-        if (!token) {
+        if (!localStorage.getItem("token")) {
             setError("Your session has expired. Please log in again.");
             setLoading(false);
             return;
         }
 
         loadData();
-    }, [token, loadData]);
+    }, [loadData]);
 
+    // Xử lý form giao việc
     const handleChange = (event) => {
         const { name, value } = event.target;
-        setForm((current) => ({ ...current, [name]: value }));
+
+        setForm((current) => ({
+            ...current,
+            [name]: value,
+        }));
     };
 
     const handleSubmit = async (event) => {
@@ -106,14 +160,12 @@ export default function ManagementDashboard() {
         setSaving(true);
 
         try {
-            const payload = {
+            const response = await api().post(TASK_API, {
                 title: form.title.trim(),
                 description: form.description.trim(),
                 assigned_to: Number(form.assigned_to),
                 due_date: form.due_date || null,
-            };
-
-            const response = await api().post(TASK_API, payload);
+            });
 
             setMessage(
                 response.data?.message || "Task assigned successfully."
@@ -134,12 +186,86 @@ export default function ManagementDashboard() {
         }
     };
 
-    const handleCancel = async (taskId) => {
-        const confirmed = window.confirm(
-            "Are you sure you want to cancel this task?"
-        );
+    // Xử lý form tạo lịch làm
+    const handleScheduleChange = (event) => {
+        const { name, value } = event.target;
 
-        if (!confirmed) return;
+        setScheduleForm((current) => ({
+            ...current,
+            [name]: value,
+        }));
+    };
+
+    const handleScheduleSubmit = async (event) => {
+        event.preventDefault();
+
+        setScheduleError("");
+        setError("");
+        setMessage("");
+
+        if (
+            !scheduleForm.employee_id ||
+            !scheduleForm.schedule_date ||
+            !scheduleForm.start_time ||
+            !scheduleForm.end_time ||
+            !scheduleForm.shift_name.trim()
+        ) {
+            setScheduleError(
+                "Please complete all required schedule fields."
+            );
+            return;
+        }
+
+        if (scheduleForm.end_time <= scheduleForm.start_time) {
+            setScheduleError(
+                "End time must be later than start time."
+            );
+            return;
+        }
+
+        setScheduleSaving(true);
+
+        try {
+            const response = await api().post(SCHEDULE_API, {
+                employee_id: Number(scheduleForm.employee_id),
+                schedule_date: scheduleForm.schedule_date,
+                start_time: scheduleForm.start_time,
+                end_time: scheduleForm.end_time,
+                shift_name: scheduleForm.shift_name.trim(),
+                note: scheduleForm.note.trim() || null,
+            });
+
+            setMessage(
+                response.data?.message ||
+                "Work schedule created successfully."
+            );
+
+            setScheduleForm({
+                employee_id: "",
+                schedule_date: "",
+                start_time: "",
+                end_time: "",
+                shift_name: "",
+                note: "",
+            });
+
+            await loadData();
+        } catch (err) {
+            setScheduleError(getErrorMessage(err));
+        } finally {
+            setScheduleSaving(false);
+        }
+    };
+
+    // Hủy công việc
+    const handleCancel = async (taskId) => {
+        if (
+            !window.confirm(
+                "Are you sure you want to cancel this task?"
+            )
+        ) {
+            return;
+        }
 
         setError("");
         setMessage("");
@@ -160,7 +286,8 @@ export default function ManagementDashboard() {
     };
 
     const activeTasks = tasks.filter(
-        (task) => ["PENDING", "IN_PROGRESS"].includes(task.status)
+        (task) =>
+            ["PENDING", "IN_PROGRESS"].includes(task.status)
     ).length;
 
     const completedTasks = tasks.filter(
@@ -173,19 +300,31 @@ export default function ManagementDashboard() {
         { label: "Completed tasks", value: completedTasks },
     ];
 
+    const tabs = [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "tasks", label: "Task Management" },
+        { id: "schedule", label: "Work Schedule" },
+    ];
+
+   const regularEmployees = employees.filter((employee) => {
+    return Boolean(
+        employee.employee_code || employee.employeeCode
+    );
+});
+
     return (
-        <div className="mx-auto max-w-7xl space-y-8">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="mx-auto max-w-7xl space-y-6">
+            {/* Tiêu đề */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <p className="text-sm font-medium text-gray-500">
-                        MANAGEMENT OVERVIEW
+                        MANAGEMENT PORTAL
                     </p>
-                    <h1 className="mt-2 text-3xl font-bold tracking-tight">
-                        Dashboard
+
+                    <h1 className="mt-2 text-3xl font-bold">
+                        {tabs.find((tab) => tab.id === currentTab)?.label
+                            || "Dashboard"}
                     </h1>
-                    <p className="mt-2 text-sm text-gray-500">
-                        Assign tasks and monitor employee progress.
-                    </p>
                 </div>
 
                 <button
@@ -197,214 +336,495 @@ export default function ManagementDashboard() {
                 </button>
             </div>
 
+            {/* Thanh điều hướng */}
+            <nav className="flex flex-wrap gap-2">
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setSearchParams({ tab: tab.id })}
+                        className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                            currentTab === tab.id
+                                ? "bg-black text-white"
+                                : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                        }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </nav>
+
+            {/* Thông báo lỗi */}
             {error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                     {error}
                 </div>
             )}
 
+            {/* Thông báo thành công */}
             {message && (
                 <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
                     {message}
                 </div>
             )}
 
-            <section className="grid gap-4 sm:grid-cols-3">
-                {stats.map((stat) => (
-                    <div
-                        key={stat.label}
-                        className="rounded-2xl border border-gray-200 bg-white p-6"
-                    >
-                        <p className="text-sm text-gray-500">{stat.label}</p>
-                        <p className="mt-3 text-3xl font-bold">
-                            {loading ? "—" : stat.value}
-                        </p>
-                    </div>
-                ))}
-            </section>
+            {/* DASHBOARD */}
+            {currentTab === "dashboard" && (
+                <>
+                    <section className="grid gap-4 sm:grid-cols-3">
+                        {stats.map((stat) => (
+                            <div
+                                key={stat.label}
+                                className="rounded-2xl border border-gray-200 bg-white p-6"
+                            >
+                                <p className="text-sm text-gray-500">
+                                    {stat.label}
+                                </p>
 
-            <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <div className="rounded-2xl border border-gray-200 bg-white p-6">
-                    <div className="mb-6">
-                        <h2 className="text-xl font-bold">Assign a task</h2>
-                        <p className="mt-1 text-sm text-gray-500">
-                            Create a task for an employee.
-                        </p>
-                    </div>
+                                <p className="mt-3 text-3xl font-bold">
+                                    {loading ? "—" : stat.value}
+                                </p>
+                            </div>
+                        ))}
+                    </section>
 
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <div>
-                            <label className="mb-2 block text-sm font-semibold">
-                                Task title
-                            </label>
+                    <section className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <h2 className="text-xl font-bold">
+                            Overview
+                        </h2>
+
+                        <p className="mt-2 text-sm text-gray-500">
+                            Use Task Management to assign and track tasks,
+                            or Work Schedule to manage employee shifts.
+                        </p>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <button
+                                onClick={() =>
+                                    setSearchParams({ tab: "tasks" })
+                                }
+                                className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                            >
+                                Open Task Management
+                            </button>
+
+                            <button
+                                onClick={() =>
+                                    setSearchParams({ tab: "schedule" })
+                                }
+                                className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold hover:bg-gray-50"
+                            >
+                                View Work Schedule
+                            </button>
+                        </div>
+                    </section>
+                </>
+            )}
+
+            {/* TASK MANAGEMENT */}
+            {currentTab === "tasks" && (
+                <>
+                    <section className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <h2 className="text-xl font-bold">
+                            Assign a task
+                        </h2>
+
+                        <form
+                            onSubmit={handleSubmit}
+                            className="mt-5 grid gap-4 md:grid-cols-2"
+                        >
                             <input
                                 name="title"
                                 value={form.title}
                                 onChange={handleChange}
                                 maxLength={200}
                                 required
-                                placeholder="Enter task title"
-                                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-black"
+                                placeholder="Task title"
+                                className="rounded-xl border border-gray-300 px-4 py-3"
                             />
-                        </div>
 
-                        <div>
-                            <label className="mb-2 block text-sm font-semibold">
-                                Description
-                            </label>
-                            <textarea
-                                name="description"
-                                value={form.description}
-                                onChange={handleChange}
-                                rows={4}
-                                placeholder="Describe the task..."
-                                className="w-full resize-y rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-black"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="mb-2 block text-sm font-semibold">
-                                Assign to employee
-                            </label>
                             <select
                                 name="assigned_to"
                                 value={form.assigned_to}
                                 onChange={handleChange}
                                 required
-                                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                className="rounded-xl border border-gray-300 bg-white px-4 py-3"
                             >
-                                <option value="">Select an employee</option>
-                                {employees.map((employee) => (
-                                    <option
-                                        key={employee.id ?? employee.user_id}
-                                        value={employee.id ?? employee.user_id}
-                                    >
-                                        {employee.full_name ||
-                                            employee.fullName ||
-                                            employee.employee_code ||
-                                            `Employee #${employee.id ?? employee.user_id}`}
-                                        {employee.department
-                                            ? ` — ${employee.department}`
-                                            : ""}
-                                    </option>
-                                ))}
+                                <option value="">
+                                    Select employee
+                                </option>
+
+                                {employees.map((employee) => {
+                                    const id =
+                                        employee.id ?? employee.user_id;
+
+                                    return (
+                                        <option key={id} value={id}>
+                                            {employee.full_name ||
+                                                employee.fullName ||
+                                                employee.employee_code ||
+                                                `Employee #${id}`}
+                                        </option>
+                                    );
+                                })}
                             </select>
 
-                            {employees.length === 0 && !loading && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    No employees were returned by the employee API.
-                                    Check its response format and permissions.
-                                </p>
-                            )}
-                        </div>
+                            <textarea
+                                name="description"
+                                value={form.description}
+                                onChange={handleChange}
+                                rows={3}
+                                placeholder="Task description"
+                                className="rounded-xl border border-gray-300 px-4 py-3 md:col-span-2"
+                            />
 
-                        <div>
-                            <label className="mb-2 block text-sm font-semibold">
-                                Due date
-                            </label>
                             <input
                                 type="date"
                                 name="due_date"
                                 value={form.due_date}
                                 onChange={handleChange}
-                                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-black"
+                                className="rounded-xl border border-gray-300 px-4 py-3"
                             />
-                        </div>
 
-                        <button
-                            type="submit"
-                            disabled={saving || loading || employees.length === 0}
-                            className="w-full rounded-xl bg-black px-5 py-3.5 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {saving ? "Assigning..." : "Assign task"}
-                        </button>
-                    </form>
-                </div>
+                            <button
+                                type="submit"
+                                disabled={
+                                    saving ||
+                                    loading ||
+                                    employees.length === 0
+                                }
+                                className="rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-50"
+                            >
+                                {saving ? "Assigning..." : "Assign task"}
+                            </button>
+                        </form>
+                    </section>
 
-                <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-6">
-                    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h2 className="text-xl font-bold">
-                                Task management
-                            </h2>
-                            <p className="mt-1 text-sm text-gray-500">
-                                Review assigned work and current progress.
+                    <section className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <h2 className="text-xl font-bold">
+                            Task list
+                        </h2>
+
+                        {loading ? (
+                            <p className="py-8 text-gray-500">
+                                Loading tasks...
                             </p>
-                        </div>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium">
-                            {tasks.length} tasks
-                        </span>
-                    </div>
-
-                    {loading ? (
-                        <p className="py-10 text-center text-sm text-gray-500">
-                            Loading data...
-                        </p>
-                    ) : tasks.length === 0 ? (
-                        <div className="rounded-xl bg-gray-50 px-5 py-12 text-center">
-                            <p className="font-semibold">No tasks yet</p>
-                            <p className="mt-2 text-sm text-gray-500">
-                                Create a task using the form.
+                        ) : tasks.length === 0 ? (
+                            <p className="py-8 text-gray-500">
+                                No tasks yet.
                             </p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {tasks.map((task) => (
-                                <article
-                                    key={task.id}
-                                    className="rounded-xl border border-gray-200 p-4"
-                                >
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div className="min-w-0 flex-1">
-                                            <h3 className="break-words font-semibold">
-                                                {task.title}
-                                            </h3>
+                        ) : (
+                            <div className="mt-4 space-y-3">
+                                {tasks.map((task) => (
+                                    <article
+                                        key={task.id}
+                                        className="rounded-xl border border-gray-200 p-4"
+                                    >
+                                        <div className="flex flex-wrap justify-between gap-3">
+                                            <div>
+                                                <h3 className="font-semibold">
+                                                    {task.title}
+                                                </h3>
 
-                                            {task.description && (
-                                                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
-                                                    {task.description}
+                                                {task.description && (
+                                                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">
+                                                        {task.description}
+                                                    </p>
+                                                )}
+
+                                                <p className="mt-2 text-xs text-gray-500">
+                                                    Assigned to:{" "}
+                                                    {task.employee_name ||
+                                                        `Employee #${task.assigned_to}`}
                                                 </p>
-                                            )}
 
-                                            <p className="mt-3 text-xs text-gray-500">
-                                                Assigned to:{" "}
-                                                {task.employee_name ||
-                                                    `Employee #${task.assigned_to}`}
-                                            </p>
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    Due:{" "}
+                                                    {task.due_date
+                                                        ? String(
+                                                            task.due_date
+                                                        ).slice(0, 10)
+                                                        : "No deadline"}
+                                                </p>
+                                            </div>
 
-                                            <p className="mt-1 text-xs text-gray-500">
-                                                Due:{" "}
-                                                {task.due_date
-                                                    ? String(task.due_date).slice(0, 10)
-                                                    : "No deadline"}
-                                            </p>
+                                            <span className="h-fit rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold">
+                                                {statusLabels[task.status] ||
+                                                    task.status}
+                                            </span>
                                         </div>
 
-                                        <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold">
-                                            {statusLabels[task.status] ||
-                                                task.status}
-                                        </span>
-                                    </div>
+                                        {task.status !== "CANCELLED" &&
+                                            task.status !== "COMPLETED" && (
+                                                <button
+                                                    onClick={() =>
+                                                        handleCancel(task.id)
+                                                    }
+                                                    className="mt-4 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                                >
+                                                    Cancel task
+                                                </button>
+                                            )}
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </>
+            )}
 
-                                    {task.status !== "CANCELLED" &&
-                                        task.status !== "COMPLETED" && (
-                                            <button
-                                                onClick={() => handleCancel(task.id)}
-                                                className="mt-4 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-                                            >
-                                                Cancel task
-                                            </button>
-                                        )}
-                                </article>
-                            ))}
+            {/* WORK SCHEDULE */}
+            {currentTab === "schedule" && (
+                <div className="space-y-6">
+                    {/* FORM TẠO LỊCH */}
+                    <section className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <div className="mb-5">
+                            <h2 className="text-xl font-bold">
+                                Create Work Schedule
+                            </h2>
+
+                            <p className="mt-1 text-sm text-gray-500">
+                                Create a work schedule for an employee.
+                            </p>
                         </div>
-                    )}
-                </div>
-            </section>
 
-            <div className="text-sm text-gray-500">
-                Employee work status will be updated through the Employee portal.
-            </div>
+                        {scheduleError && (
+                            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                                {scheduleError}
+                            </div>
+                        )}
+
+                        <form
+                            onSubmit={handleScheduleSubmit}
+                            className="grid gap-4 md:grid-cols-2"
+                        >
+                            {/* Chọn nhân viên */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                Employee <span className="text-red-600">*</span>
+
+                                <select
+                                    name="employee_id"
+                                    value={scheduleForm.employee_id}
+                                    onChange={handleScheduleChange}
+                                    required
+                                    className="rounded-xl border border-gray-300 bg-white px-4 py-3 font-normal"
+                                >
+                                    <option value="">
+                                        Select employee
+                                    </option>
+
+                                    {regularEmployees.map((employee) => {
+                                        const id =
+                                            employee.id ?? employee.user_id;
+
+                                        return (
+                                            <option key={id} value={id}>
+                                                {employee.full_name ||
+    employee.fullName ||
+    employee.name ||
+    employee.employee_code ||
+    employee.employeeCode ||
+    `Employee #${id}`}
+
+                                                {employee.employee_code
+                                                    ? ` (${employee.employee_code})`
+                                                    : ""}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </label>
+
+                            {/* Ngày làm */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                Work date <span className="text-red-600">*</span>
+
+                                <input
+                                    type="date"
+                                    name="schedule_date"
+                                    value={scheduleForm.schedule_date}
+                                    onChange={handleScheduleChange}
+                                    required
+                                    className="rounded-xl border border-gray-300 px-4 py-3 font-normal"
+                                />
+                            </label>
+
+                            {/* Giờ bắt đầu */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                Start time <span className="text-red-600">*</span>
+
+                                <input
+                                    type="time"
+                                    name="start_time"
+                                    value={scheduleForm.start_time}
+                                    onChange={handleScheduleChange}
+                                    required
+                                    className="rounded-xl border border-gray-300 px-4 py-3 font-normal"
+                                />
+                            </label>
+
+                            {/* Giờ kết thúc */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                End time <span className="text-red-600">*</span>
+
+                                <input
+                                    type="time"
+                                    name="end_time"
+                                    value={scheduleForm.end_time}
+                                    onChange={handleScheduleChange}
+                                    required
+                                    className="rounded-xl border border-gray-300 px-4 py-3 font-normal"
+                                />
+                            </label>
+
+                            {/* Ca làm */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                Shift <span className="text-red-600">*</span>
+
+                                <input
+                                    name="shift_name"
+                                    value={scheduleForm.shift_name}
+                                    onChange={handleScheduleChange}
+                                    required
+                                    maxLength={50}
+                                    placeholder="Morning, Afternoon, Evening..."
+                                    className="rounded-xl border border-gray-300 px-4 py-3 font-normal"
+                                />
+                            </label>
+
+                            {/* Ghi chú */}
+                            <label className="grid gap-2 text-sm font-medium text-gray-700">
+                                Note
+
+                                <input
+                                    name="note"
+                                    value={scheduleForm.note}
+                                    onChange={handleScheduleChange}
+                                    maxLength={500}
+                                    placeholder="Optional note"
+                                    className="rounded-xl border border-gray-300 px-4 py-3 font-normal"
+                                />
+                            </label>
+
+                            <div className="md:col-span-2">
+                                <button
+                                    type="submit"
+                                    disabled={
+                                        scheduleSaving ||
+                                        loading ||
+                                        regularEmployees.length === 0
+                                    }
+                                    className="rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {scheduleSaving
+                                        ? "Creating schedule..."
+                                        : "Create schedule"}
+                                </button>
+
+                                {regularEmployees.length === 0 && (
+                                    <p className="mt-2 text-sm text-amber-700">
+                                        No employees with the EMPLOYEE role
+                                        were returned by the employees API.
+                                    </p>
+                                )}
+                            </div>
+                        </form>
+                    </section>
+
+                    {/* DANH SÁCH LỊCH LÀM */}
+                    <section className="rounded-2xl border border-gray-200 bg-white p-6">
+                        <div className="mb-5">
+                            <h2 className="text-xl font-bold">
+                                Employee Work Schedule
+                            </h2>
+
+                            <p className="mt-1 text-sm text-gray-500">
+                                View schedules you are permitted to access.
+                            </p>
+                        </div>
+
+                        {scheduleError && (
+                            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                                Could not load schedules: {scheduleError}
+                            </div>
+                        )}
+
+                        {loading ? (
+                            <p className="py-8 text-center text-gray-500">
+                                Loading schedules...
+                            </p>
+                        ) : schedules.length === 0 ? (
+                            <p className="py-8 text-center text-gray-500">
+                                No work schedules found.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[750px] text-left text-sm">
+                                    <thead className="border-b bg-gray-50 text-gray-600">
+                                        <tr>
+                                            <th className="px-4 py-3">
+                                                Employee
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Date
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Working Hours
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Shift
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Status
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Note
+                                            </th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody className="divide-y divide-gray-100">
+                                        {schedules.map((schedule) => (
+                                            <tr
+                                                key={schedule.id}
+                                                className="hover:bg-gray-50"
+                                            >
+                                                <td className="px-4 py-3 font-medium">
+                                                    {schedule.employee_name ||
+                                                        `Employee #${schedule.employee_id}`}
+                                                </td>
+
+                                                <td className="px-4 py-3">
+                                                    {formatDate(
+                                                        schedule.schedule_date
+                                                    )}
+                                                </td>
+
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                    {formatTime(schedule.start_time)}
+                                                    {" - "}
+                                                    {formatTime(schedule.end_time)}
+                                                </td>
+
+                                                <td className="px-4 py-3">
+                                                    {schedule.shift_name || "-"}
+                                                </td>
+
+                                                <td className="px-4 py-3">
+                                                    {schedule.status || "-"}
+                                                </td>
+
+                                                <td className="px-4 py-3">
+                                                    {schedule.note || "-"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </section>
+                </div>
+            )}
         </div>
     );
 }

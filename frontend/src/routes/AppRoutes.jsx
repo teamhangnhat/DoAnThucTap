@@ -85,12 +85,14 @@ import ManagementLayout
 
 import ManagementDashboard
     from "../pages/Management/ManagementDashboard";
+    
 // =====================================================
 // ADMIN
 // =====================================================
+
 import EmployeeLayout
     from "../components/employee/EmployeeLayout";
-
+import EmployeeCreate from "../pages/Admin/Employees/EmployeeCreate";
 import EmployeePage
     from "../pages/Admin/Employees/EmployeePage";
 
@@ -391,7 +393,10 @@ function AppRoutes() {
    {/* ================================================= */}
 {/* ADMIN ROUTES */}
 {/* ================================================= */}
-
+<Route
+    path="/admin/employees/new"
+    element={<EmployeeCreate />}
+/>
 <Route
     path="/admin"
     element={<AdminLayout />}
