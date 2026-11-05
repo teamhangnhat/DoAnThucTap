@@ -5,12 +5,10 @@ const router =
 
 
 const {
-
     createOrder,
-
     getMyOrders,
-
-    getOrderDetails
+    getOrderDetails,
+    getAllOrders
 
 } = require(
 
@@ -24,6 +22,7 @@ const authMiddleware = require(
     "../middleware/authMiddleware"
 
 );
+
 
 
 // =====================================================
@@ -59,6 +58,7 @@ router.get(
 // =====================================================
 // GET ORDER DETAILS
 // =====================================================
+router.get("/", authMiddleware, getAllOrders);
 
 router.get(
 

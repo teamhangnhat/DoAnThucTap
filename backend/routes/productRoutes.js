@@ -7,12 +7,15 @@ const {
     createProduct,
     updateProduct,
     deleteProduct,
-     getBestSeller
+     getBestSeller,
+       getInventory
 } = require("../controllers/productController");
 
 router.get("/", getProducts);
 
 router.get("/best-seller", getBestSeller);
+
+router.get("/inventory", getInventory);
 
 router.get("/:id", getProductById);
 

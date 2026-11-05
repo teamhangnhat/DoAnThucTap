@@ -1276,6 +1276,51 @@ const getBestSeller = async (req, res) => {
 
 };
 
+const getInventory = async (req, res) => {
+    try {
+        const pool = await sql.connect(config);
+
+        const result = await pool.request().query(`
+            SELECT
+                p.id AS product_id,
+                p.product_name,
+                p.image_url AS product_image,
+                p.category_id,
+                pc.id AS color_id,
+                pc.color_name,
+                pc.image_url AS color_image,
+                ps.id AS size_id,
+                ps.size,
+                pv.id AS variant_id,
+                ISNULL(pv.stock, 0) AS stock,
+                CASE
+                    WHEN ISNULL(pv.stock, 0) = 0 THEN 'OUT_OF_STOCK'
+                    WHEN pv.stock <= 5 THEN 'LOW_STOCK'
+                    ELSE 'IN_STOCK'
+                END AS stock_status
+            FROM products p
+            LEFT JOIN product_colors pc
+                ON p.id = pc.product_id
+            LEFT JOIN product_sizes ps
+                ON p.id = ps.product_id
+            LEFT JOIN product_variants pv
+                ON pv.product_id = p.id
+                AND pv.color_id = pc.id
+                AND pv.size_id = ps.id
+            WHERE p.is_active = 1
+            ORDER BY p.product_name, pc.color_name, ps.size
+        `);
+
+        return res.status(200).json(result.recordset);
+    } catch (error) {
+        console.error("GET INVENTORY ERROR:", error);
+
+        return res.status(500).json({
+            message: "Failed to retrieve inventory"
+        });
+    }
+};
+
 
 
 // =====================================================
@@ -1294,6 +1339,9 @@ module.exports = {
 
     deleteProduct,
 
-    getBestSeller
+    getBestSeller,
+
+     getInventory
 
 };
+console.log("Inventory export:", typeof module.exports.getInventory);

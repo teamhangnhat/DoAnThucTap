@@ -4,6 +4,8 @@ import Footer from "./Footer";
 
 import AIChatBox from "../chatboxAI/AIChatBox";
 
+import CustomerSupportChat from "../customerchat/CustomerSupportChat";
+
 import { Outlet } from "react-router-dom";
 
 function Layout() {
@@ -28,7 +30,8 @@ function Layout() {
 
             {/* Chatbot AI */}
             <AIChatBox />
-
+               {/* Customer Support Chat */}
+<CustomerSupportChat />
         </>
 
     );

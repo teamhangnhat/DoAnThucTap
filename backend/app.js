@@ -20,6 +20,7 @@ const {
 // =====================================================
 // CUSTOMER ROUTES
 // =====================================================
+const customerChatRoutes = require("./routes/customerChatRoutes");
 const voucherRoutes =
     require("./routes/voucherRoutes");
 const userRoutes =
@@ -175,6 +176,7 @@ app.use(
 // =====================================================
 // CUSTOMER API ROUTES
 // =====================================================
+app.use("/api/customer-chat", customerChatRoutes);
 app.use(
     "/api/vouchers",
     voucherRoutes

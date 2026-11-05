@@ -1968,18 +1968,55 @@ const getOrderDetails = async (req, res) => {
 
 };
 
+const getAllOrders = async (req, res) => {
+    try {
+        const pool = await connectDB();
 
+        const result = await pool.request().query(`
+            SELECT
+                o.id,
+                o.customer_id,
+                u.full_name AS customer_name,
+                u.email AS customer_email,
+                u.phone AS customer_phone,
+                o.total_amount,
+                o.status,
+                o.order_date,
+                o.shipping_fee,
+                o.discount_amount,
+                o.payment_method,
+                o.payment_status,
+                ca.receiver_name,
+                ca.phone AS receiver_phone,
+                ca.address_detail,
+                ca.city,
+                ca.district,
+                ca.ward
+            FROM orders o
+            LEFT JOIN users u ON o.customer_id = u.id
+            LEFT JOIN customer_addresses ca ON o.address_id = ca.id
+            ORDER BY o.order_date DESC
+        `);
+
+        return res.status(200).json(result.recordset);
+    } catch (error) {
+        console.error("GET ALL ORDERS ERROR:", error);
+
+        return res.status(500).json({
+            message: "Failed to retrieve orders"
+        });
+    }
+};
 
 // =====================================================
 // EXPORT
 // =====================================================
 
 module.exports = {
-
     createOrder,
-
     getMyOrders,
-
-    getOrderDetails
-
+    getOrderDetails,
+    getAllOrders
 };
+
+console.log("Export check:", typeof module.exports.getAllOrders);
