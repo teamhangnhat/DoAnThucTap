@@ -135,6 +135,7 @@ import AdminFlashSales
 import EditFlashSale
     from "../pages/Admin/FlashSale/EditFlashSale";
     import AdminRevenue from "../pages/Admin/Revenue/AdminRevenue";
+    import LeaveRequests from "../pages/Admin/LeaveRequests/LeaveRequests";
 function AppRoutes() {
 
 
@@ -501,6 +502,12 @@ function AppRoutes() {
     path="revenue"
     element={
         <AdminRevenue />
+    }
+/>
+<Route
+    path="leave-requests"
+    element={
+        <LeaveRequests />
     }
 />
 </Route>

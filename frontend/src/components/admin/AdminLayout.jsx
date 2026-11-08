@@ -13,6 +13,7 @@ import {
     Tag,
     UserCog,
     BarChart3,
+    CalendarDays,
     LogOut,
     CircleUserRound
 } from "lucide-react";
@@ -311,6 +312,11 @@ function AdminLayout() {
             icon: UserCog
 
         },
+        {
+    name: "Leave Requests",
+    path: "/admin/leave-requests",
+    icon: CalendarDays
+},
 
 
         {

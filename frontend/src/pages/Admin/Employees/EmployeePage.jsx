@@ -25,6 +25,8 @@ const PRODUCTS_API = "http://localhost:5000/api/products";
 const ORDERS_API = "http://localhost:5000/api/orders";
 
 const INVENTORY_API = "http://localhost:5000/api/products/inventory";
+
+const LEAVE_REQUESTS_API = "http://localhost:5000/api/leave-requests";
 function EmployeeSchedule() {
     const [schedules, setSchedules] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1256,6 +1258,306 @@ function EmployeeInventory() {
         </section>
     );
 }
+function EmployeeLeaveRequests() {
+    const [requests, setRequests] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+
+    const [form, setForm] = useState({
+        start_date: "",
+        end_date: "",
+        reason: ""
+    });
+
+    const loadRequests = useCallback(async () => {
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            setError("Your session has expired. Please log in again.");
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        setError("");
+
+        try {
+            const response = await axios.get(
+                `${LEAVE_REQUESTS_API}/my`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                }
+            );
+
+            setRequests(response.data?.leaveRequests || []);
+        } catch (err) {
+            console.error(
+                "Failed to load leave requests:",
+                err.response?.data || err
+            );
+
+            setError(
+                err.response?.data?.message ||
+                "Unable to load leave requests."
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadRequests();
+    }, [loadRequests]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        const token = localStorage.getItem("token");
+
+        setError("");
+        setSuccess("");
+
+        if (form.end_date < form.start_date) {
+            setError("End date must be on or after start date.");
+            return;
+        }
+
+        setSubmitting(true);
+
+        try {
+            await axios.post(
+                LEAVE_REQUESTS_API,
+                form,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                }
+            );
+
+            setSuccess("Your leave request has been submitted successfully.");
+
+            setForm({
+                start_date: "",
+                end_date: "",
+                reason: ""
+            });
+
+            await loadRequests();
+        } catch (err) {
+            console.error(
+                "Failed to submit leave request:",
+                err.response?.data || err
+            );
+
+            setError(
+                err.response?.data?.message ||
+                "Unable to submit leave request."
+            );
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const formatDate = (value) => {
+        if (!value) return "—";
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) return "—";
+
+        return date.toLocaleDateString("en-GB");
+    };
+
+    const getStatusStyle = (status) => {
+        const styles = {
+            PENDING: "bg-yellow-100 text-yellow-700",
+            APPROVED: "bg-green-100 text-green-700",
+            REJECTED: "bg-red-100 text-red-700"
+        };
+
+        return styles[status] || "bg-gray-100 text-gray-700";
+    };
+
+    return (
+        <section className="mt-6 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                        My Leave Requests
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                        Submit leave requests and track their approval status.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={loadRequests}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                    <RefreshCw size={16} />
+                    Refresh
+                </button>
+            </div>
+
+            {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {error}
+                </div>
+            )}
+
+            {success && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                    {success}
+                </div>
+            )}
+
+            <form
+                onSubmit={handleSubmit}
+                className="space-y-4 rounded-xl border bg-white p-5"
+            >
+                <h3 className="font-semibold text-gray-900">
+                    Submit a Leave Request
+                </h3>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Start Date
+                        </label>
+                        <input
+                            type="date"
+                            required
+                            value={form.start_date}
+                            onChange={(e) =>
+                                setForm({
+                                    ...form,
+                                    start_date: e.target.value
+                                })
+                            }
+                            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-gray-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                            End Date
+                        </label>
+                        <input
+                            type="date"
+                            required
+                            min={form.start_date || undefined}
+                            value={form.end_date}
+                            onChange={(e) =>
+                                setForm({
+                                    ...form,
+                                    end_date: e.target.value
+                                })
+                            }
+                            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-gray-500"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Reason
+                    </label>
+                    <textarea
+                        required
+                        rows={4}
+                        value={form.reason}
+                        onChange={(e) =>
+                            setForm({
+                                ...form,
+                                reason: e.target.value
+                            })
+                        }
+                        placeholder="Enter your leave request reason..."
+                        className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-gray-500"
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={submitting}
+                    className="rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                >
+                    {submitting ? "Submitting..." : "Submit Request"}
+                </button>
+            </form>
+
+            <div className="space-y-3">
+                <h3 className="font-semibold text-gray-900">
+                    Leave Request History
+                </h3>
+
+                {loading ? (
+                    <div className="rounded-xl border bg-white p-8 text-center text-gray-500">
+                        Loading leave requests...
+                    </div>
+                ) : requests.length === 0 ? (
+                    <div className="rounded-xl border bg-white p-8 text-center">
+                        <CalendarOff
+                            size={32}
+                            className="mx-auto text-gray-400"
+                        />
+                        <h3 className="mt-3 font-semibold text-gray-900">
+                            No Leave Requests
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Your submitted leave requests will appear here.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto rounded-xl border bg-white">
+                        <table className="w-full min-w-[750px] text-left text-sm">
+                            <thead className="bg-gray-50 text-gray-600">
+                                <tr>
+                                    <th className="px-5 py-3">Start Date</th>
+                                    <th className="px-5 py-3">End Date</th>
+                                    <th className="px-5 py-3">Reason</th>
+                                    <th className="px-5 py-3">Status</th>
+                                    <th className="px-5 py-3">Review Note</th>
+                                </tr>
+                            </thead>
+
+                            <tbody className="divide-y">
+                                {requests.map((item) => (
+                                    <tr key={item.id}>
+                                        <td className="px-5 py-4">
+                                            {formatDate(item.start_date)}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            {formatDate(item.end_date)}
+                                        </td>
+                                        <td className="max-w-xs whitespace-pre-wrap px-5 py-4">
+                                            {item.reason}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(item.status)}`}>
+                                                {item.status}
+                                            </span>
+                                        </td>
+                                        <td className="max-w-xs whitespace-pre-wrap px-5 py-4 text-gray-600">
+                                            {item.review_note || "—"}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+}
 
 
 function EmployeePage() {
@@ -1318,6 +1620,9 @@ function EmployeePage() {
 )}
 {location.pathname === "/employee/inventory" && (
     <EmployeeInventory />
+)}
+{location.pathname === "/employee/leave-requests" && (
+    <EmployeeLeaveRequests />
 )}
         </div>
     );

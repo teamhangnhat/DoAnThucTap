@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 const TASK_API = "http://localhost:5000/api/admin/employee-tasks";
 const EMPLOYEE_API = "http://localhost:5000/api/employees";
 const SCHEDULE_API = "http://localhost:5000/api/work-schedules";
+const LEAVE_REQUESTS_API = "http://localhost:5000/api/leave-requests";
 
 const statusLabels = {
     PENDING: "Pending",
@@ -54,6 +55,19 @@ export default function ManagementDashboard() {
     const [employees, setEmployees] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [schedules, setSchedules] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [pendingLeaveRequests, setPendingLeaveRequests] = useState([]);
+const [reviewingId, setReviewingId] = useState(null);
+const [leaveLoading, setLeaveLoading] = useState(false);
+const [leaveSaving, setLeaveSaving] = useState(false);
+const [leaveError, setLeaveError] = useState("");
+const [leaveMessage, setLeaveMessage] = useState("");
+
+const [leaveForm, setLeaveForm] = useState({
+    start_date: "",
+    end_date: "",
+    reason: ""
+});
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -136,7 +150,135 @@ export default function ManagementDashboard() {
 
         loadData();
     }, [loadData]);
+   const loadLeaveRequests = useCallback(async () => {
+    setLeaveLoading(true);
+    setLeaveError("");
 
+    try {
+        const response = await api().get(
+            `${LEAVE_REQUESTS_API}/my`
+        );
+
+        setLeaveRequests(
+            getArray(response.data, "leaveRequests")
+        );
+    } catch (err) {
+        setLeaveError(getErrorMessage(err));
+    } finally {
+        setLeaveLoading(false);
+    }
+}, [api]);
+const loadPendingLeaveRequests = useCallback(async () => {
+    setLeaveLoading(true);
+    setLeaveError("");
+
+    try {
+        const response = await api().get(
+            `${LEAVE_REQUESTS_API}/pending`
+        );
+
+        setPendingLeaveRequests(
+            getArray(response.data, "leaveRequests")
+        );
+    } catch (err) {
+        setLeaveError(getErrorMessage(err));
+    } finally {
+        setLeaveLoading(false);
+    }
+}, [api]);
+const handleEmployeeLeaveReview = async (requestId, status) => {
+    const action = status === "APPROVED" ? "approve" : "reject";
+
+    if (!window.confirm(`Are you sure you want to ${action} this request?`)) {
+        return;
+    }
+
+    setReviewingId(requestId);
+    setLeaveError("");
+    setLeaveMessage("");
+
+    try {
+        const response = await api().patch(
+            `${LEAVE_REQUESTS_API}/${requestId}/review`,
+            {
+                status,
+                review_note: null
+            }
+        );
+
+        setLeaveMessage(
+            response.data?.message || "Leave request reviewed successfully."
+        );
+
+        await loadPendingLeaveRequests();
+    } catch (err) {
+        setLeaveError(getErrorMessage(err));
+    } finally {
+        setReviewingId(null);
+    }
+};
+const handleLeaveChange = (event) => {
+    const { name, value } = event.target;
+
+    setLeaveForm((current) => ({
+        ...current,
+        [name]: value
+    }));
+};
+
+const handleLeaveSubmit = async (event) => {
+    event.preventDefault();
+
+    setLeaveError("");
+    setLeaveMessage("");
+
+    if (
+        !leaveForm.start_date ||
+        !leaveForm.end_date ||
+        !leaveForm.reason.trim()
+    ) {
+        setLeaveError("Please complete all required fields.");
+        return;
+    }
+
+    if (leaveForm.end_date < leaveForm.start_date) {
+        setLeaveError("End date must be later than or equal to start date.");
+        return;
+    }
+
+    setLeaveSaving(true);
+
+    try {
+        const response = await api().post(LEAVE_REQUESTS_API, {
+            start_date: leaveForm.start_date,
+            end_date: leaveForm.end_date,
+            reason: leaveForm.reason.trim()
+        });
+
+        setLeaveMessage(
+            response.data?.message || "Leave request submitted successfully."
+        );
+
+        setLeaveForm({
+            start_date: "",
+            end_date: "",
+            reason: ""
+        });
+
+        await loadLeaveRequests();
+    } catch (err) {
+        setLeaveError(getErrorMessage(err));
+    } finally {
+        setLeaveSaving(false);
+    }
+};
+
+useEffect(() => {
+    if (currentTab === "leave-requests") {
+        loadLeaveRequests();
+        loadPendingLeaveRequests();
+    }
+}, [currentTab, loadLeaveRequests, loadPendingLeaveRequests]);
     // Xử lý form giao việc
     const handleChange = (event) => {
         const { name, value } = event.target;
@@ -304,6 +446,7 @@ export default function ManagementDashboard() {
         { id: "dashboard", label: "Dashboard" },
         { id: "tasks", label: "Task Management" },
         { id: "schedule", label: "Work Schedule" },
+         { id: "leave-requests", label: "Leave Requests" },
     ];
 
    const regularEmployees = employees.filter((employee) => {
@@ -825,6 +968,281 @@ export default function ManagementDashboard() {
                     </section>
                 </div>
             )}
+         {/* LEAVE REQUESTS */}
+{currentTab === "leave-requests" && (
+    <div className="space-y-6">
+        <section className="rounded-2xl border border-gray-200 bg-white p-6">
+            <h2 className="text-xl font-bold">
+                Submit Leave Request
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-500">
+                Submit your leave request to the Admin for review.
+            </p>
+
+            {leaveError && (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {leaveError}
+                </div>
+            )}
+
+            {leaveMessage && (
+                <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                    {leaveMessage}
+                </div>
+            )}
+
+            <form
+                onSubmit={handleLeaveSubmit}
+                className="mt-5 grid gap-4 md:grid-cols-2"
+            >
+                <label className="grid gap-2 text-sm font-medium text-gray-700">
+                    Start date
+                    <input
+                        type="date"
+                        name="start_date"
+                        value={leaveForm.start_date}
+                        onChange={handleLeaveChange}
+                        required
+                        className="rounded-xl border border-gray-300 px-4 py-3"
+                    />
+                </label>
+
+                <label className="grid gap-2 text-sm font-medium text-gray-700">
+                    End date
+                    <input
+                        type="date"
+                        name="end_date"
+                        value={leaveForm.end_date}
+                        onChange={handleLeaveChange}
+                        min={leaveForm.start_date || undefined}
+                        required
+                        className="rounded-xl border border-gray-300 px-4 py-3"
+                    />
+                </label>
+
+                <label className="grid gap-2 text-sm font-medium text-gray-700 md:col-span-2">
+                    Reason
+                    <textarea
+                        name="reason"
+                        value={leaveForm.reason}
+                        onChange={handleLeaveChange}
+                        rows={4}
+                        required
+                        placeholder="Enter your reason for leave..."
+                        className="rounded-xl border border-gray-300 px-4 py-3"
+                    />
+                </label>
+
+                <div className="md:col-span-2">
+                    <button
+                        type="submit"
+                        disabled={leaveSaving}
+                        className="rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-50"
+                    >
+                        {leaveSaving ? "Submitting..." : "Submit Request"}
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section className="rounded-2xl border border-gray-200 bg-white p-6">
+            <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                    <h2 className="text-xl font-bold">
+                        My Leave Requests
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                        View the status of your submitted requests.
+                    </p>
+                </div>
+
+                <button
+                    onClick={loadLeaveRequests}
+                    disabled={leaveLoading}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                >
+                    Refresh
+                </button>
+            </div>
+
+            {leaveLoading ? (
+                <p className="py-8 text-center text-gray-500">
+                    Loading leave requests...
+                </p>
+            ) : leaveRequests.length === 0 ? (
+                <p className="py-8 text-center text-gray-500">
+                    You have not submitted any leave requests.
+                </p>
+            ) : (
+                <div className="space-y-4">
+                    {leaveRequests.map((request) => (
+                        <article
+                            key={request.id}
+                            className="rounded-xl border border-gray-200 p-5"
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h3 className="font-semibold">
+                                    Leave Request #{request.id}
+                                </h3>
+
+                                <span
+                                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                        request.status === "APPROVED"
+                                            ? "bg-green-50 text-green-700"
+                                            : request.status === "REJECTED"
+                                            ? "bg-red-50 text-red-700"
+                                            : "bg-amber-50 text-amber-700"
+                                    }`}
+                                >
+                                    {request.status || "PENDING"}
+                                </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                                <div>
+                                    <p className="text-gray-500">Start date</p>
+                                    <p className="mt-1 font-medium">
+                                        {formatDate(request.start_date)}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <p className="text-gray-500">End date</p>
+                                    <p className="mt-1 font-medium">
+                                        {formatDate(request.end_date)}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4">
+                                <p className="text-sm text-gray-500">Reason</p>
+                                <p className="mt-1 whitespace-pre-wrap text-sm">
+                                    {request.reason}
+                                </p>
+                            </div>
+
+                            {request.review_note && (
+                                <div className="mt-4 rounded-lg bg-gray-50 p-3">
+                                    <p className="text-sm font-semibold">
+                                        Review note
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        {request.review_note}
+                                    </p>
+                                </div>
+                            )}
+                        </article>
+                    ))}
+                </div>
+            )}
+        </section>
+        <section className="rounded-2xl border border-gray-200 bg-white p-6">
+    <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+            <h2 className="text-xl font-bold">
+                Employee Leave Requests
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+                Review leave requests submitted by employees.
+            </p>
+        </div>
+
+        <button
+            onClick={loadPendingLeaveRequests}
+            disabled={leaveLoading}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+        >
+            Refresh
+        </button>
+    </div>
+
+    {leaveLoading ? (
+        <p className="py-8 text-center text-gray-500">
+            Loading employee leave requests...
+        </p>
+    ) : pendingLeaveRequests.length === 0 ? (
+        <p className="py-8 text-center text-gray-500">
+            No pending employee leave requests.
+        </p>
+    ) : (
+        <div className="space-y-4">
+            {pendingLeaveRequests.map((request) => (
+                <article
+                    key={request.id}
+                    className="rounded-xl border border-gray-200 p-5"
+                >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 className="font-semibold">
+                                {request.full_name}
+                            </h3>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {request.employee_code || "Employee"}
+                                {request.department
+                                    ? ` · ${request.department}`
+                                    : ""}
+                            </p>
+                        </div>
+
+                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                            Pending
+                        </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                        <div>
+                            <p className="text-gray-500">Start date</p>
+                            <p className="mt-1 font-medium">
+                                {formatDate(request.start_date)}
+                            </p>
+                        </div>
+
+                        <div>
+                            <p className="text-gray-500">End date</p>
+                            <p className="mt-1 font-medium">
+                                {formatDate(request.end_date)}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <p className="text-sm text-gray-500">Reason</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm">
+                            {request.reason}
+                        </p>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                        <button
+                            onClick={() =>
+                                handleEmployeeLeaveReview(request.id, "APPROVED")
+                            }
+                            disabled={reviewingId === request.id}
+                            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                            {reviewingId === request.id ? "Processing..." : "Approve"}
+                        </button>
+
+                        <button
+                            onClick={() =>
+                                handleEmployeeLeaveReview(request.id, "REJECTED")
+                            }
+                            disabled={reviewingId === request.id}
+                            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                            Reject
+                        </button>
+                    </div>
+                </article>
+            ))}
+        </div>
+    )}
+</section>
+    </div>
+    
+)}
+
         </div>
     );
 }

@@ -76,6 +76,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 // =====================================================
 // ADMIN ROUTES
 // =====================================================
+const leaveRequestRoutes = require("./routes/Admin/leaveRequestRoutes");
 const employeeTaskRoutes =
     require("./routes/Admin/employeeTaskRoutes");
 const workScheduleRoutes = require("./routes/Admin/workScheduleRoutes");
@@ -287,6 +288,7 @@ app.use(
 // =====================================================
 // ADMIN API ROUTES
 // =====================================================
+app.use("/api/leave-requests", leaveRequestRoutes);
 app.use("/api/admin/employee-tasks", employeeTaskRoutes);
 app.use("/api/work-schedules", workScheduleRoutes);
 app.use("/api/salaries", salaryRoutes);
